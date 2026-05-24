@@ -610,7 +610,7 @@ async function scanPCB() {
   hideResult(); hideError();
 
   try {
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-lite:generateContent?key=${apiKey}`;
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`;
     const res = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -630,7 +630,12 @@ async function scanPCB() {
       const err = await res.json().catch(() => ({}));
       const msg = err?.error?.message || `API error ${res.status}`;
       if (res.status === 400 && msg.includes('API_KEY')) throw new Error('Invalid API key. Tap "API Key" to update it.');
-      if (res.status === 429) throw new Error('Rate limit hit. Gemini free tier allows 15 scans/minute. Please wait a moment.');
+      if (res.status === 429) {
+        // Auto-retry after countdown
+        await countdownRetry(10);
+        return scanPCB();
+      }
+      if (res.status === 403) throw new Error('API key not authorised. Make sure you created the key at aistudio.google.com/apikey');
       throw new Error(msg);
     }
 
@@ -672,6 +677,23 @@ async function scanPCB() {
   } finally {
     setScanLoading(false);
   }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  Auto-retry countdown
+// ─────────────────────────────────────────────────────────────────────────────
+function countdownRetry(seconds) {
+  return new Promise(resolve => {
+    let remaining = seconds;
+    const label = document.getElementById('scan-label');
+    const tick = () => {
+      label.textContent = `⏳ Retrying in ${remaining}s…`;
+      if (remaining <= 0) { resolve(); return; }
+      remaining--;
+      setTimeout(tick, 1000);
+    };
+    tick();
+  });
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
